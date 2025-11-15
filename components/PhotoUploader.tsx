@@ -11,13 +11,15 @@ import { useRef } from "react";
 
 interface PhotoUploaderProps {
   photos: Array<{ id: string; imageUrl: string; file: File }>;
-  onPhotosChange: (files: File[]) => void;
+  onPhotosAdd: (files: File[]) => void;
+  onPhotoRemove: (id: string) => void;
   maxPhotos?: number;
 }
 
 export default function PhotoUploader({
   photos,
-  onPhotosChange,
+  onPhotosAdd,
+  onPhotoRemove,
   maxPhotos = 50,
 }: PhotoUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -31,7 +33,12 @@ export default function PhotoUploader({
       return;
     }
 
-    onPhotosChange(files);
+    onPhotosAdd(files);
+
+    // input 초기화 (같은 파일 다시 선택 가능하도록)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleClick = () => {
@@ -39,19 +46,16 @@ export default function PhotoUploader({
   };
 
   const handleRemovePhoto = (id: string) => {
-    const updatedPhotos = photos.filter((photo) => photo.id !== id);
-    // 부모 컴포넌트에 업데이트된 파일 목록 전달
-    const updatedFiles = updatedPhotos.map((photo) => photo.file);
-    onPhotosChange(updatedFiles);
+    onPhotoRemove(id);
   };
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold mb-2">
+        <h2 className="text-xl font-semibold mb-2 text-black">
           1. 대회 사진들을 여러 장 업로드 해 주세요
         </h2>
-        <p className="text-gray-600 text-sm mb-4">
+        <p className="text-gray-600 text-sm mb-4 text-black">
           최대 {maxPhotos}장까지 업로드 가능합니다.
         </p>
 
