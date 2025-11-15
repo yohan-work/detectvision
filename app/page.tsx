@@ -56,7 +56,7 @@ export default function Home() {
   }, []);
 
   // 대회 사진 업로드 핸들러
-  const handleMarathonPhotosChange = (files: File[]) => {
+  const handleMarathonPhotosAdd = (files: File[]) => {
     const newPhotos: MarathonPhoto[] = files.map((file) => ({
       id: uuidv4(),
       file,
@@ -64,8 +64,24 @@ export default function Home() {
       faces: [],
     }));
 
-    setMarathonPhotos(newPhotos);
+    // 기존 사진에 새 사진 추가
+    setMarathonPhotos((prev) => [...prev, ...newPhotos]);
     // 새로운 사진 업로드 시 결과 초기화
+    setMatchResults([]);
+    setErrorMessage(null);
+  };
+
+  // 대회 사진 삭제 핸들러
+  const handleMarathonPhotoRemove = (id: string) => {
+    setMarathonPhotos((prev) => {
+      const photo = prev.find((p) => p.id === id);
+      // Object URL 메모리 해제
+      if (photo) {
+        URL.revokeObjectURL(photo.imageUrl);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
+    // 사진 삭제 시 결과 초기화
     setMatchResults([]);
     setErrorMessage(null);
   };
@@ -187,17 +203,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         {/* 헤더 */}
         <header className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
-            마라톤 얼굴 찾기 PoC
-          </h1>
-          <p className="text-gray-600 text-lg">
-            여러 장의 대회 사진 중에서, 업로드한 내 얼굴 사진과 유사한 얼굴이
-            포함된 사진을 찾아줍니다.
-          </p>
-          <p className="text-gray-500 text-sm mt-2">
-            (모든 처리는 브라우저에서만 이루어지며, 이미지가 서버로 전송되지
-            않습니다)
-          </p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">detect PoC</h1>
         </header>
 
         {/* 모델 로딩 상태 */}
@@ -211,7 +217,8 @@ export default function Home() {
         <section className="bg-white rounded-lg shadow-md p-6 mb-6">
           <PhotoUploader
             photos={marathonPhotos}
-            onPhotosChange={handleMarathonPhotosChange}
+            onPhotosAdd={handleMarathonPhotosAdd}
+            onPhotoRemove={handleMarathonPhotoRemove}
           />
         </section>
 
@@ -225,7 +232,9 @@ export default function Home() {
 
         {/* 분석 실행 */}
         <section className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">3. 분석 실행</h2>
+          <h2 className="text-xl font-semibold mb-4 text-black">
+            3. 분석 실행
+          </h2>
 
           <button
             onClick={handleAnalyze}
@@ -273,8 +282,8 @@ export default function Home() {
 
         {/* 결과 */}
         <section className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-semibold mb-4">결과</h2>
-          <p className="text-gray-600 mb-6">
+          <h2 className="text-2xl font-semibold mb-4 text-black">결과</h2>
+          <p className="text-gray-600 mb-6 text-black">
             내 얼굴과 유사한 얼굴이 포함된 사진들입니다.
           </p>
 
