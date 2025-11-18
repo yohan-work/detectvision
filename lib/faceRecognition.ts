@@ -9,7 +9,7 @@
  */
 
 import * as faceapi from 'face-api.js';
-import { DetectedFace, MarathonPhoto, MatchResult } from './types';
+import { DetectedFace, MarathonPhoto, MatchResult, Expression, FaceExpressions } from './types';
 
 /**
  * face-api.js 모델들을 public/models 경로에서 로드
@@ -17,6 +17,8 @@ import { DetectedFace, MarathonPhoto, MatchResult } from './types';
  * - TinyFaceDetector: 가벼운 얼굴 검출 모델
  * - FaceLandmark68Net: 얼굴 랜드마크 검출 (68개 포인트)
  * - FaceRecognitionNet: 얼굴 descriptor(임베딩) 추출
+ * - FaceExpressionNet: 얼굴 표정 인식 (7가지 감정)
+ * - AgeGenderNet: 나이 및 성별 추정
  * 
  * @returns Promise<void>
  */
@@ -27,6 +29,8 @@ export async function loadModels(): Promise<void> {
     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
     faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+    faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL),
   ]);
 }
 
@@ -83,13 +87,17 @@ export async function detectFacesInImage(file: File): Promise<DetectedFace[]> {
         // 이미지 리사이즈로 성능 최적화
         const resizedCanvas = resizeImage(img, 800);
         
-        // 얼굴 검출 + 랜드마크 + descriptor 추출
+        // 얼굴 검출 + 랜드마크 + descriptor + 표정 + 나이/성별 추출
         // withFaceLandmarks: 얼굴의 68개 랜드마크 포인트 검출
         // withFaceDescriptors: 얼굴의 128차원 벡터 추출
+        // withFaceExpressions: 7가지 감정 확률 추출
+        // withAgeAndGender: 나이 및 성별 추정
         const detections = await faceapi
           .detectAllFaces(resizedCanvas, new faceapi.TinyFaceDetectorOptions())
           .withFaceLandmarks()
-          .withFaceDescriptors();
+          .withFaceDescriptors()
+          .withFaceExpressions()
+          .withAgeAndGender();
         
         // DetectedFace 형식으로 변환
         const faces: DetectedFace[] = detections.map((detection) => ({
@@ -100,6 +108,18 @@ export async function detectFacesInImage(file: File): Promise<DetectedFace[]> {
             width: detection.detection.box.width,
             height: detection.detection.box.height,
           },
+          expressions: detection.expressions ? {
+            happy: detection.expressions.happy,
+            sad: detection.expressions.sad,
+            angry: detection.expressions.angry,
+            surprised: detection.expressions.surprised,
+            disgusted: detection.expressions.disgusted,
+            fearful: detection.expressions.fearful,
+            neutral: detection.expressions.neutral,
+          } : undefined,
+          age: detection.age,
+          gender: detection.gender as 'male' | 'female',
+          genderProbability: detection.genderProbability,
         }));
         
         URL.revokeObjectURL(objectUrl);
@@ -216,5 +236,171 @@ export async function extractReferenceFace(
   }
   
   return faces[0].descriptor;
+}
+
+/**
+ * 표정에서 가장 높은 확률의 표정 반환
+ * 
+ * @param expressions - 표정 확률 객체
+ * @returns Expression - 가장 확률이 높은 표정
+ */
+export function getDominantExpression(expressions: FaceExpressions): Expression {
+  const entries = Object.entries(expressions) as [Expression, number][];
+  const sorted = entries.sort((a, b) => b[1] - a[1]);
+  return sorted[0][0];
+}
+
+/**
+ * 표정을 이모지로 변환
+ * 
+ * @param expression - 표정 타입
+ * @returns string - 해당하는 이모지
+ */
+export function getExpressionEmoji(expression: Expression): string {
+  const emojiMap: Record<Expression, string> = {
+    happy: '😊',
+    sad: '😢',
+    angry: '😠',
+    surprised: '😲',
+    disgusted: '🤢',
+    fearful: '😨',
+    neutral: '😐',
+  };
+  return emojiMap[expression];
+}
+
+/**
+ * 표정을 한글로 변환
+ * 
+ * @param expression - 표정 타입
+ * @returns string - 한글 표정명
+ */
+export function getExpressionLabel(expression: Expression): string {
+  const labelMap: Record<Expression, string> = {
+    happy: '행복',
+    sad: '슬픔',
+    angry: '화남',
+    surprised: '놀람',
+    disgusted: '혐오',
+    fearful: '두려움',
+    neutral: '무표정',
+  };
+  return labelMap[expression];
+}
+
+/**
+ * 이미지에서 얼굴 영역만 크롭
+ * 
+ * @param imageUrl - 원본 이미지 URL
+ * @param box - 얼굴 bounding box
+ * @param padding - 여백 비율 (기본 0.2 = 20%)
+ * @returns Promise<Blob> - 크롭된 이미지 Blob
+ */
+export async function cropFaceFromImage(
+  imageUrl: string,
+  box: { x: number; y: number; width: number; height: number },
+  padding: number = 0.2
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img');
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        reject(new Error('Canvas context를 생성할 수 없습니다.'));
+        return;
+      }
+      
+      // 여백 계산
+      const paddingX = box.width * padding;
+      const paddingY = box.height * padding;
+      
+      // 크롭 영역 계산 (여백 포함, 이미지 경계 넘지 않도록)
+      const cropX = Math.max(0, box.x - paddingX);
+      const cropY = Math.max(0, box.y - paddingY);
+      const cropWidth = Math.min(
+        img.width - cropX,
+        box.width + paddingX * 2
+      );
+      const cropHeight = Math.min(
+        img.height - cropY,
+        box.height + paddingY * 2
+      );
+      
+      // Canvas 크기 설정
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+      
+      // 이미지 크롭하여 그리기
+      ctx.drawImage(
+        img,
+        cropX, cropY, cropWidth, cropHeight,
+        0, 0, cropWidth, cropHeight
+      );
+      
+      // Blob으로 변환
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('이미지를 Blob으로 변환할 수 없습니다.'));
+        }
+      }, 'image/jpeg', 0.95);
+    };
+    
+    img.onerror = () => {
+      reject(new Error('이미지 로드 실패'));
+    };
+    
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+  });
+}
+
+/**
+ * 사진에서 모든 얼굴을 크롭하여 다운로드
+ * 
+ * @param photo - 마라톤 사진 정보
+ * @param faceIndex - 특정 얼굴 인덱스 (선택적, 없으면 모든 얼굴)
+ */
+export async function downloadCroppedFaces(
+  photo: MarathonPhoto,
+  faceIndex?: number
+): Promise<void> {
+  const facesToCrop = faceIndex !== undefined 
+    ? [photo.faces[faceIndex]]
+    : photo.faces;
+  
+  if (facesToCrop.length === 0) {
+    alert('크롭할 얼굴이 없습니다.');
+    return;
+  }
+  
+  try {
+    for (let i = 0; i < facesToCrop.length; i++) {
+      const face = facesToCrop[i];
+      const blob = await cropFaceFromImage(photo.imageUrl, face.box);
+      
+      // 다운로드 링크 생성
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `face_${photo.file.name.replace(/\.[^/.]+$/, '')}_${i + 1}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      // 다중 다운로드 시 약간의 지연 (브라우저 차단 방지)
+      if (facesToCrop.length > 1 && i < facesToCrop.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+  } catch (error) {
+    console.error('얼굴 크롭 실패:', error);
+    alert('얼굴 크롭에 실패했습니다.');
+  }
 }
 
