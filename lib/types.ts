@@ -1,7 +1,35 @@
 /**
+ * 얼굴 표정 타입 (7가지 감정)
+ */
+export type Expression = 'happy' | 'sad' | 'angry' | 'surprised' | 'disgusted' | 'fearful' | 'neutral';
+
+/**
+ * 표정 확률 정보
+ * 각 표정에 대한 0~1 사이의 확률값
+ */
+export interface FaceExpressions {
+  happy: number;
+  sad: number;
+  angry: number;
+  surprised: number;
+  disgusted: number;
+  fearful: number;
+  neutral: number;
+}
+
+/**
+ * 성별 정보
+ */
+export type Gender = 'male' | 'female';
+
+/**
  * 검출된 얼굴 정보
  * - descriptor: 얼굴의 128차원 벡터 표현 (얼굴 임베딩)
  * - box: 얼굴이 위치한 bounding box 좌표
+ * - expressions: 얼굴 표정 확률 정보 (선택적)
+ * - age: 추정 나이 (선택적)
+ * - gender: 추정 성별 (선택적)
+ * - genderProbability: 성별 추정 확률 (0~1, 선택적)
  */
 export interface DetectedFace {
   descriptor: Float32Array;
@@ -11,6 +39,10 @@ export interface DetectedFace {
     width: number;
     height: number;
   };
+  expressions?: FaceExpressions;
+  age?: number;
+  gender?: Gender;
+  genderProbability?: number;
 }
 
 /**
