@@ -6,6 +6,7 @@ import PhotoUploader from "@/components/PhotoUploader";
 import FacePreview from "@/components/FacePreview";
 import ResultGallery from "@/components/ResultGallery";
 import ImageModal from "@/components/ImageModal";
+import LiveFaceTracker from "@/components/LiveFaceTracker";
 import { MarathonPhoto, MatchResult } from "@/lib/types";
 import {
   loadModels,
@@ -15,6 +16,9 @@ import {
 } from "@/lib/faceRecognition";
 
 export default function Home() {
+  // 탭 상태
+  const [activeTab, setActiveTab] = useState<'matching' | 'live'>('matching');
+  
   // 상태 관리
   const [marathonPhotos, setMarathonPhotos] = useState<MarathonPhoto[]>([]);
   const [referencePhoto, setReferencePhoto] = useState<{
@@ -101,6 +105,19 @@ export default function Home() {
     setMyDescriptor(null);
     setMatchResults([]);
     setErrorMessage(null);
+  };
+
+  // 웹캠 캡처 핸들러
+  const handleCaptureFace = (file: File) => {
+    setReferencePhoto({
+      file,
+      imageUrl: URL.createObjectURL(file),
+    });
+    setMyDescriptor(null);
+    setMatchResults([]);
+    setErrorMessage(null);
+    // 매칭 탭으로 전환
+    setActiveTab('matching');
   };
 
   // 분석 실행 핸들러
@@ -213,85 +230,126 @@ export default function Home() {
           </div>
         )}
 
-        {/* 대회 사진 업로드 */}
-        <section className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <PhotoUploader
-            photos={marathonPhotos}
-            onPhotosAdd={handleMarathonPhotosAdd}
-            onPhotoRemove={handleMarathonPhotoRemove}
-          />
-        </section>
+        {/* 탭 메뉴 */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="flex border-b">
+            <button
+              onClick={() => setActiveTab('matching')}
+              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+                activeTab === 'matching'
+                  ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              📸 얼굴 매칭
+            </button>
+            <button
+              onClick={() => setActiveTab('live')}
+              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+                activeTab === 'live'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              🎥 실시간 추적
+            </button>
+          </div>
+        </div>
 
-        {/* 기준 사진 업로드 */}
-        <section className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <FacePreview
-            referencePhoto={referencePhoto}
-            onPhotoChange={handleReferencePhotoChange}
-          />
-        </section>
+        {/* 탭 내용 */}
+        {activeTab === 'matching' ? (
+          <>
+            {/* 대회 사진 업로드 */}
+            <section className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <PhotoUploader
+                photos={marathonPhotos}
+                onPhotosAdd={handleMarathonPhotosAdd}
+                onPhotoRemove={handleMarathonPhotoRemove}
+              />
+            </section>
 
-        {/* 분석 실행 */}
-        <section className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-black">
-            3. 분석 실행
-          </h2>
+            {/* 기준 사진 업로드 */}
+            <section className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <FacePreview
+                referencePhoto={referencePhoto}
+                onPhotoChange={handleReferencePhotoChange}
+              />
+            </section>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzeDisabled}
-            className={`px-8 py-3 rounded-lg font-semibold text-white transition-colors ${
-              isAnalyzeDisabled
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-purple-600 hover:bg-purple-700"
-            }`}
-          >
-            {isAnalyzing
-              ? "분석 중..."
-              : isLoadingModels
-              ? "모델 로딩 중..."
-              : "내 얼굴이 나온 사진 찾기"}
-          </button>
+            {/* 분석 실행 */}
+            <section className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-4 text-black">
+                3. 분석 실행
+              </h2>
 
-          {/* 진행 상태 */}
-          {isAnalyzing && analysisProgress.total > 0 && (
-            <div className="mt-4">
-              <p className="text-gray-700">
-                사진 분석 중: {analysisProgress.current} /{" "}
-                {analysisProgress.total}
+              <button
+                onClick={handleAnalyze}
+                disabled={isAnalyzeDisabled}
+                className={`px-8 py-3 rounded-lg font-semibold text-white transition-colors ${
+                  isAnalyzeDisabled
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-purple-600 hover:bg-purple-700"
+                }`}
+              >
+                {isAnalyzing
+                  ? "분석 중..."
+                  : isLoadingModels
+                  ? "모델 로딩 중..."
+                  : "내 얼굴이 나온 사진 찾기"}
+              </button>
+
+              {/* 진행 상태 */}
+              {isAnalyzing && analysisProgress.total > 0 && (
+                <div className="mt-4">
+                  <p className="text-gray-700">
+                    사진 분석 중: {analysisProgress.current} /{" "}
+                    {analysisProgress.total}
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${
+                          (analysisProgress.current / analysisProgress.total) * 100
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 에러 메시지 */}
+              {errorMessage && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-red-700">{errorMessage}</p>
+                </div>
+              )}
+            </section>
+
+            {/* 결과 */}
+            <section className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-2xl font-semibold mb-4 text-black">결과</h2>
+              <p className="text-gray-600 mb-6 text-black">
+                내 얼굴과 유사한 얼굴이 포함된 사진들입니다.
               </p>
-              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                <div
-                  className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${
-                      (analysisProgress.current / analysisProgress.total) * 100
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
 
-          {/* 에러 메시지 */}
-          {errorMessage && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-700">{errorMessage}</p>
-            </div>
-          )}
-        </section>
-
-        {/* 결과 */}
-        <section className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-semibold mb-4 text-black">결과</h2>
-          <p className="text-gray-600 mb-6 text-black">
-            내 얼굴과 유사한 얼굴이 포함된 사진들입니다.
-          </p>
-
-          <ResultGallery
-            results={matchResults}
-            onImageClick={setSelectedImageUrl}
-          />
-        </section>
+              <ResultGallery
+                results={matchResults}
+                onImageClick={setSelectedImageUrl}
+              />
+            </section>
+          </>
+        ) : (
+          <>
+            {/* 실시간 얼굴 추적 */}
+            <section className="bg-white rounded-lg shadow-md p-6">
+              <LiveFaceTracker
+                isModelsLoaded={isModelsLoaded}
+                onCaptureFace={handleCaptureFace}
+              />
+            </section>
+          </>
+        )}
       </div>
 
       {/* 이미지 모달 */}
